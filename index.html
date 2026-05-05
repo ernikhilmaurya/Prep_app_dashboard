@@ -1,0 +1,494 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Dashboard</title>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
+
+      body {
+        font-family: "Inter", sans-serif;
+        background-color: #121212;
+        color: #e0e0e0;
+        display: flex;
+        justify-content: center;
+        align-items: flex-start;
+        min-height: 100vh;
+        margin: 0;
+        padding: 20px;
+        box-sizing: border-box;
+      }
+
+      .container {
+        width: 100%;
+        max-width: 800px;
+        background-color: #1e1e1e;
+        padding: 40px;
+        border-radius: 8px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      }
+
+      .tab-bar {
+        display: flex;
+        gap: 12px;
+        margin-bottom: 32px;
+      }
+
+      .tab-btn {
+        display: inline-block;
+        width: auto;
+        padding: 10px 24px;
+        font-size: 15px;
+        font-weight: 600;
+        border-radius: 4px;
+        border: 2px solid #333;
+        background-color: #252525;
+        color: #aaa;
+        cursor: pointer;
+        transition: background-color 0.2s, border-color 0.2s, color 0.2s;
+        margin-top: 0;
+      }
+
+      .tab-btn:hover {
+        background-color: #2e2e2e;
+        border-color: #555;
+        color: #e0e0e0;
+      }
+
+      .tab-btn.active {
+        background-color: #007bff;
+        border-color: #007bff;
+        color: #fff;
+      }
+
+      .tab-btn.active:hover {
+        background-color: #0056b3;
+        border-color: #0056b3;
+      }
+
+      .panel {
+        display: none;
+      }
+
+      .panel.active {
+        display: block;
+      }
+
+      h2 {
+        color: #ffffff;
+        border-bottom: 1px solid #333;
+        padding-bottom: 10px;
+        margin-top: 0;
+      }
+
+      input[type="file"] {
+        display: block;
+        width: 100%;
+        padding: 10px;
+        border: 2px dashed #333;
+        background-color: #252525;
+        border-radius: 4px;
+        color: #e0e0e0;
+        cursor: pointer;
+        margin-bottom: 20px;
+        box-sizing: border-box;
+      }
+
+      input[type="file"]::file-selector-button {
+        background-color: #007bff;
+        color: white;
+        border: none;
+        padding: 8px 12px;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: background-color 0.2s;
+      }
+
+      input[type="file"]::file-selector-button:hover {
+        background-color: #0056b3;
+      }
+
+      textarea {
+        width: 100%;
+        height: 300px;
+        background-color: #252525;
+        border: 1px solid #333;
+        color: #e0e0e0;
+        padding: 10px;
+        border-radius: 4px;
+        resize: vertical;
+        box-sizing: border-box;
+      }
+
+      .submit-btn {
+        display: block;
+        width: 100%;
+        padding: 12px;
+        background-color: #007bff;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        font-size: 16px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background-color 0.2s;
+        margin-top: 20px;
+      }
+
+      .submit-btn:hover {
+        background-color: #0056b3;
+      }
+
+      pre {
+        white-space: pre-wrap;
+        word-break: break-word;
+        background-color: #252525;
+        padding: 10px;
+        border-radius: 4px;
+        font-size: 13px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+
+      <!-- Tab Buttons -->
+      <div class="tab-bar">
+        <button class="tab-btn active" onclick="switchTab('article')">Upload Article</button>
+        <button class="tab-btn" onclick="switchTab('quiz')">Upload Quiz</button>
+        <button class="tab-btn" onclick="switchTab('syllabus')">Upload Mapped Syllabus</button>
+        <button class="tab-btn" onclick="switchTab('revision')">Upload Revision Concepts</button>
+      </div>
+
+      <!-- Article Panel -->
+      <div id="panel-article" class="panel active">
+        <h2>Upload JSON File</h2>
+        <input type="file" id="articleFileInput" accept=".json" />
+
+        <h2>Or Paste JSON</h2>
+        <textarea id="articleJsonInput"></textarea>
+
+        <button class="submit-btn" onclick="submitArticle()">Submit</button>
+        <div id="articleStatus"></div>
+      </div>
+
+      <!-- Quiz Panel -->
+      <div id="panel-quiz" class="panel">
+        <h2>Upload JSON File</h2>
+        <input type="file" id="quizFileInput" accept=".json" />
+
+        <h2>Or Paste JSON</h2>
+        <textarea id="quizJsonInput" placeholder='{"quizzes": [{"news_title": "...", "quiz": {"easy": [...], "medium": [...], "hard": [...]}}]}'></textarea>
+
+        <button class="submit-btn" onclick="submitQuiz()">Submit</button>
+        <div id="quizStatus"></div>
+      </div>
+
+      <!-- Revision Concepts Panel -->
+      <div id="panel-revision" class="panel">
+        <h2>Upload JSON File</h2>
+        <input type="file" id="revisionFileInput" accept=".json" />
+
+        <h2>Or Paste JSON</h2>
+        <textarea id="revisionJsonInput" placeholder='Single concept object {...} or array [{...}, {...}]'></textarea>
+
+        <button class="submit-btn" onclick="submitRevision()">Submit</button>
+        <div id="revisionStatus"></div>
+      </div>
+
+      <!-- Mapped Syllabus Panel -->
+      <div id="panel-syllabus" class="panel">
+        <h2>Upload JSON File</h2>
+        <input type="file" id="syllabusFileInput" accept=".json" />
+
+        <h2>Or Paste JSON</h2>
+        <textarea id="syllabusJsonInput" placeholder='{"data": [{"rank": "1", "title": "...", "sub_topics": [{"sub_topic": "...", "micro_topics": ["..."]}]}]}'></textarea>
+
+        <button class="submit-btn" onclick="submitSyllabus()">Submit</button>
+        <div id="syllabusStatus"></div>
+      </div>
+
+    </div>
+
+    <script>
+      const TABS = ['article', 'quiz', 'syllabus', 'revision'];
+
+      function switchTab(tab) {
+        document.querySelectorAll('.tab-btn').forEach((btn, i) => {
+          btn.classList.toggle('active', TABS[i] === tab);
+        });
+        TABS.forEach(t => {
+          document.getElementById(`panel-${t}`).classList.toggle('active', t === tab);
+        });
+      }
+
+      // ── Article upload (unchanged logic) ──────────────────────────────────
+
+      function submitArticle() {
+        const jsonInput = document.getElementById("articleJsonInput");
+        const fileInput = document.getElementById("articleFileInput");
+        const statusDiv = document.getElementById("articleStatus");
+        statusDiv.innerHTML = "";
+
+        let jsonData;
+
+        if (jsonInput.value) {
+          try {
+            jsonData = JSON.parse(jsonInput.value);
+            sendArticleData(jsonData);
+          } catch (e) {
+            statusDiv.innerHTML = `<p style="color:red;">Error parsing JSON: ${e.message}</p>`;
+            return;
+          }
+        } else if (fileInput.files.length > 0) {
+          const reader = new FileReader();
+          reader.onload = function (event) {
+            try {
+              jsonData = JSON.parse(event.target.result);
+              sendArticleData(jsonData);
+            } catch (e) {
+              statusDiv.innerHTML = `<p style="color:red;">Error parsing JSON from file: ${e.message}</p>`;
+              return;
+            }
+          };
+          reader.readAsText(fileInput.files[0]);
+        } else {
+          statusDiv.innerHTML = '<p style="color:orange;">Please paste JSON or select a file.</p>';
+        }
+      }
+
+      async function sendArticleData(jsonData) {
+        const statusDiv = document.getElementById("articleStatus");
+        statusDiv.innerHTML = '<p style="color:lightblue;">Submitting...</p>';
+
+        const endpoint = jsonData.top_upsc_news ? '/add-articles' : '/add-article';
+
+        try {
+          const response = await fetch(endpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(jsonData),
+          });
+          const text = await response.text();
+          let data;
+          try { data = JSON.parse(text); } catch {
+            statusDiv.innerHTML = `<p style="color:red;">Server error (${response.status}): ${text.slice(0, 300)}</p>`;
+            return;
+          }
+          if (data.success) {
+            let successMessage = '';
+            if (data.article_ids) {
+              successMessage = `<p style="color:lightgreen;">Successfully added ${data.article_ids.length} articles with IDs: ${data.article_ids.join(', ')}</p>`;
+            } else {
+              successMessage = `<p style="color:lightgreen;">Successfully added article with ID: ${data.article_id}</p>`;
+            }
+            statusDiv.innerHTML = successMessage;
+            document.getElementById("articleJsonInput").value = "";
+            document.getElementById("articleFileInput").value = "";
+          } else {
+            statusDiv.innerHTML = `<p style="color:red;">Submission failed: ${data.error || "Unknown error"}</p><pre>${JSON.stringify(data.errors, null, 2)}</pre>`;
+          }
+        } catch (error) {
+          console.error("Error:", error);
+          statusDiv.innerHTML = `<p style="color:red;">An error occurred: ${error.message || "Check console for details."}</p>`;
+        }
+      }
+
+      // ── Quiz upload ────────────────────────────────────────────────────────
+
+      function submitQuiz() {
+        const jsonInput = document.getElementById("quizJsonInput");
+        const fileInput = document.getElementById("quizFileInput");
+        const statusDiv = document.getElementById("quizStatus");
+        statusDiv.innerHTML = "";
+
+        if (jsonInput.value) {
+          try {
+            const jsonData = JSON.parse(jsonInput.value);
+            sendQuizData(jsonData);
+          } catch (e) {
+            statusDiv.innerHTML = `<p style="color:red;">Error parsing JSON: ${e.message}</p>`;
+            return;
+          }
+        } else if (fileInput.files.length > 0) {
+          const reader = new FileReader();
+          reader.onload = function (event) {
+            try {
+              const jsonData = JSON.parse(event.target.result);
+              sendQuizData(jsonData);
+            } catch (e) {
+              statusDiv.innerHTML = `<p style="color:red;">Error parsing JSON from file: ${e.message}</p>`;
+              return;
+            }
+          };
+          reader.readAsText(fileInput.files[0]);
+        } else {
+          statusDiv.innerHTML = '<p style="color:orange;">Please paste JSON or select a file.</p>';
+        }
+      }
+
+      async function sendQuizData(jsonData) {
+        const statusDiv = document.getElementById("quizStatus");
+        statusDiv.innerHTML = '<p style="color:lightblue;">Submitting...</p>';
+
+        try {
+          const response = await fetch('/add-quizzes', {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(jsonData),
+          });
+          const text = await response.text();
+          let data;
+          try { data = JSON.parse(text); } catch {
+            statusDiv.innerHTML = `<p style="color:red;">Server error (${response.status}): ${text.slice(0, 300)}</p>`;
+            return;
+          }
+          if (data.success) {
+            let msg = `<p style="color:lightgreen;">Successfully inserted ${data.inserted} quiz questions`;
+            if (data.skipped) msg += ` (${data.skipped} entries skipped — no matching article)`;
+            msg += `.</p>`;
+            if (data.warnings && data.warnings.length) {
+              msg += `<pre style="color:#f0ad4e;">${data.warnings.join('\n')}</pre>`;
+            }
+            statusDiv.innerHTML = msg;
+            document.getElementById("quizJsonInput").value = "";
+            document.getElementById("quizFileInput").value = "";
+          } else {
+            statusDiv.innerHTML = `<p style="color:red;">Submission failed: ${data.error || "Unknown error"}</p>`;
+          }
+        } catch (error) {
+          console.error("Error:", error);
+          statusDiv.innerHTML = `<p style="color:red;">An error occurred: ${error.message || "Check console for details."}</p>`;
+        }
+      }
+      // ── Revision Concepts upload ───────────────────────────────────────────
+
+      function submitRevision() {
+        const jsonInput = document.getElementById("revisionJsonInput");
+        const fileInput = document.getElementById("revisionFileInput");
+        const statusDiv = document.getElementById("revisionStatus");
+        statusDiv.innerHTML = "";
+
+        if (jsonInput.value) {
+          try {
+            const jsonData = JSON.parse(jsonInput.value);
+            sendRevisionData(jsonData);
+          } catch (e) {
+            statusDiv.innerHTML = `<p style="color:red;">Error parsing JSON: ${e.message}</p>`;
+            return;
+          }
+        } else if (fileInput.files.length > 0) {
+          const reader = new FileReader();
+          reader.onload = function (event) {
+            try {
+              const jsonData = JSON.parse(event.target.result);
+              sendRevisionData(jsonData);
+            } catch (e) {
+              statusDiv.innerHTML = `<p style="color:red;">Error parsing JSON from file: ${e.message}</p>`;
+              return;
+            }
+          };
+          reader.readAsText(fileInput.files[0]);
+        } else {
+          statusDiv.innerHTML = '<p style="color:orange;">Please paste JSON or select a file.</p>';
+        }
+      }
+
+      async function sendRevisionData(jsonData) {
+        const statusDiv = document.getElementById("revisionStatus");
+        statusDiv.innerHTML = '<p style="color:lightblue;">Submitting...</p>';
+
+        try {
+          const response = await fetch('/add-revision-concepts', {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(jsonData),
+          });
+          const text = await response.text();
+          let data;
+          try { data = JSON.parse(text); } catch {
+            statusDiv.innerHTML = `<p style="color:red;">Server error (${response.status}): ${text.slice(0, 300)}</p>`;
+            return;
+          }
+          if (data.success) {
+            statusDiv.innerHTML = `<p style="color:lightgreen;">Successfully inserted ${data.inserted} revision concept${data.inserted !== 1 ? 's' : ''}.</p>`;
+            document.getElementById("revisionJsonInput").value = "";
+            document.getElementById("revisionFileInput").value = "";
+          } else {
+            statusDiv.innerHTML = `<p style="color:red;">Submission failed: ${data.error || "Unknown error"}${data.message ? ' — ' + data.message : ''}</p>`;
+          }
+        } catch (error) {
+          console.error("Error:", error);
+          statusDiv.innerHTML = `<p style="color:red;">An error occurred: ${error.message || "Check console for details."}</p>`;
+        }
+      }
+
+      // ── Mapped Syllabus upload ─────────────────────────────────────────────
+
+      function submitSyllabus() {
+        const jsonInput = document.getElementById("syllabusJsonInput");
+        const fileInput = document.getElementById("syllabusFileInput");
+        const statusDiv = document.getElementById("syllabusStatus");
+        statusDiv.innerHTML = "";
+
+        if (jsonInput.value) {
+          try {
+            const jsonData = JSON.parse(jsonInput.value);
+            sendSyllabusData(jsonData);
+          } catch (e) {
+            statusDiv.innerHTML = `<p style="color:red;">Error parsing JSON: ${e.message}</p>`;
+            return;
+          }
+        } else if (fileInput.files.length > 0) {
+          const reader = new FileReader();
+          reader.onload = function (event) {
+            try {
+              const jsonData = JSON.parse(event.target.result);
+              sendSyllabusData(jsonData);
+            } catch (e) {
+              statusDiv.innerHTML = `<p style="color:red;">Error parsing JSON from file: ${e.message}</p>`;
+              return;
+            }
+          };
+          reader.readAsText(fileInput.files[0]);
+        } else {
+          statusDiv.innerHTML = '<p style="color:orange;">Please paste JSON or select a file.</p>';
+        }
+      }
+
+      async function sendSyllabusData(jsonData) {
+        const statusDiv = document.getElementById("syllabusStatus");
+        statusDiv.innerHTML = '<p style="color:lightblue;">Submitting...</p>';
+
+        try {
+          const response = await fetch('/add-mapped-syllabus', {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(jsonData),
+          });
+          const text = await response.text();
+          let data;
+          try { data = JSON.parse(text); } catch {
+            statusDiv.innerHTML = `<p style="color:red;">Server error (${response.status}): ${text.slice(0, 300)}</p>`;
+            return;
+          }
+          if (data.success) {
+            let msg = `<p style="color:lightgreen;">Successfully inserted ${data.inserted} mapped syllabus rows`;
+            if (data.skipped) msg += ` (${data.skipped} entries skipped — no matching article)`;
+            msg += `.</p>`;
+            if (data.warnings && data.warnings.length) {
+              msg += `<pre style="color:#f0ad4e;">${data.warnings.join('\n')}</pre>`;
+            }
+            statusDiv.innerHTML = msg;
+            document.getElementById("syllabusJsonInput").value = "";
+            document.getElementById("syllabusFileInput").value = "";
+          } else {
+            statusDiv.innerHTML = `<p style="color:red;">Submission failed: ${data.error || "Unknown error"}</p>`;
+          }
+        } catch (error) {
+          console.error("Error:", error);
+          statusDiv.innerHTML = `<p style="color:red;">An error occurred: ${error.message || "Check console for details."}</p>`;
+        }
+      }
+    </script>
+  </body>
+</html>
