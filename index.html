@@ -146,9 +146,96 @@
         border-radius: 4px;
         font-size: 13px;
       }
+
+      /* Login overlay */
+      #loginOverlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.85);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 9999;
+      }
+
+      #loginOverlay.hidden { display: none; }
+
+      .login-box {
+        background: #1e1e1e;
+        padding: 40px;
+        border-radius: 8px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+        width: 100%;
+        max-width: 380px;
+        text-align: center;
+      }
+
+      .login-box h2 {
+        border: none;
+        margin-bottom: 24px;
+        padding-bottom: 0;
+      }
+
+      .login-box input[type="password"] {
+        width: 100%;
+        padding: 12px;
+        background: #252525;
+        border: 1px solid #333;
+        color: #e0e0e0;
+        border-radius: 4px;
+        font-size: 15px;
+        box-sizing: border-box;
+        margin-bottom: 16px;
+      }
+
+      .login-box input[type="password"]:focus {
+        outline: none;
+        border-color: #007bff;
+      }
+
+      .login-error {
+        color: #ff4d4d;
+        font-size: 14px;
+        margin-bottom: 12px;
+        min-height: 20px;
+      }
+
+      .logout-btn {
+        position: fixed;
+        top: 16px;
+        right: 16px;
+        padding: 8px 16px;
+        background: #333;
+        color: #ccc;
+        border: 1px solid #555;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 13px;
+        z-index: 100;
+      }
+
+      .logout-btn:hover {
+        background: #444;
+        color: #fff;
+      }
+
+      .hidden { display: none !important; }
     </style>
   </head>
   <body>
+    <!-- Login Overlay -->
+    <div id="loginOverlay">
+      <div class="login-box">
+        <h2>Dashboard Login</h2>
+        <div id="loginError" class="login-error"></div>
+        <input type="password" id="loginPassword" placeholder="Enter password" onkeydown="if(event.key==='Enter') doLogin()" autofocus />
+        <button class="submit-btn" onclick="doLogin()" style="margin-top:4px">Login</button>
+      </div>
+    </div>
+
+    <!-- Logout Button (hidden until logged in) -->
+    <button id="logoutBtn" class="logout-btn hidden" onclick="doLogout()">Logout</button>
+
     <div class="container">
 
       <!-- Tab Buttons -->
@@ -177,7 +264,7 @@
         <input type="file" id="quizFileInput" accept=".json" />
 
         <h2>Or Paste JSON</h2>
-        <textarea id="quizJsonInput" placeholder='{"quizzes": [{"news_title": "...", "quiz": {"easy": [...], "medium": [...], "hard": [...]}}]}'></textarea>
+        <textarea id="quizJsonInput" placeholder='[{"news_id": 1, "news_title": "...", "quiz": {"easy": [...], "medium": [...], "hard": [...]}}]'></textarea>
 
         <button class="submit-btn" onclick="submitQuiz()">Submit</button>
         <div id="quizStatus"></div>
@@ -189,7 +276,7 @@
         <input type="file" id="revisionFileInput" accept=".json" />
 
         <h2>Or Paste JSON</h2>
-        <textarea id="revisionJsonInput" placeholder='Single concept object {...} or array [{...}, {...}]'></textarea>
+        <textarea id="revisionJsonInput" placeholder='[{"news_id": "rank_1", "news_title": "...", "micro_concept": "...", "trigger": "...", "mechanism": "...", "prelims_trap": {...}, "insight": "..."}]'></textarea>
 
         <button class="submit-btn" onclick="submitRevision()">Submit</button>
         <div id="revisionStatus"></div>
@@ -201,7 +288,7 @@
         <input type="file" id="syllabusFileInput" accept=".json" />
 
         <h2>Or Paste JSON</h2>
-        <textarea id="syllabusJsonInput" placeholder='{"data": [{"rank": "1", "title": "...", "sub_topics": [{"sub_topic": "...", "micro_topics": ["..."]}]}]}'></textarea>
+        <textarea id="syllabusJsonInput" placeholder='[{"rank": "1", "title": "...", "sub_topics": [{"sub_topic": "...", "micro_topics": ["..."]}]}]'></textarea>
 
         <button class="submit-btn" onclick="submitSyllabus()">Submit</button>
         <div id="syllabusStatus"></div>
@@ -210,6 +297,51 @@
     </div>
 
     <script>
+      // Base path works on both localhost (/) and sub-path deployments (/a2/)
+      const API = window.location.pathname.replace(/\/[^/]*$/, '');
+
+      // ── Auth ──────────────────────────────────────────────────────────────
+      (async function checkAuth() {
+        try {
+          const res = await fetch(`${API}/auth-status`);
+          const data = await res.json();
+          if (data.authenticated) onLoginSuccess();
+        } catch {}
+      })();
+
+      async function doLogin() {
+        const pw = document.getElementById('loginPassword').value;
+        const errDiv = document.getElementById('loginError');
+        errDiv.textContent = '';
+        try {
+          const res = await fetch(`${API}/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password: pw }),
+          });
+          if (res.ok) {
+            onLoginSuccess();
+          } else {
+            errDiv.textContent = 'Invalid password';
+          }
+        } catch {
+          errDiv.textContent = 'Connection error';
+        }
+      }
+
+      function onLoginSuccess() {
+        document.getElementById('loginOverlay').classList.add('hidden');
+        document.getElementById('logoutBtn').classList.remove('hidden');
+      }
+
+      async function doLogout() {
+        await fetch(`${API}/logout`, { method: 'POST' });
+        document.getElementById('loginOverlay').classList.remove('hidden');
+        document.getElementById('logoutBtn').classList.add('hidden');
+        document.getElementById('loginPassword').value = '';
+        document.getElementById('loginError').textContent = '';
+      }
+
       const TABS = ['article', 'quiz', 'syllabus', 'revision'];
 
       function switchTab(tab) {
@@ -260,7 +392,7 @@
         const statusDiv = document.getElementById("articleStatus");
         statusDiv.innerHTML = '<p style="color:lightblue;">Submitting...</p>';
 
-        const endpoint = jsonData.top_upsc_news ? '/add-articles' : '/add-article';
+        const endpoint = jsonData.top_upsc_news ? `${API}/add-articles` : `${API}/add-article`;
 
         try {
           const response = await fetch(endpoint, {
@@ -331,7 +463,7 @@
         statusDiv.innerHTML = '<p style="color:lightblue;">Submitting...</p>';
 
         try {
-          const response = await fetch('/add-quizzes', {
+          const response = await fetch(`${API}/add-quizzes`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(jsonData),
@@ -398,7 +530,7 @@
         statusDiv.innerHTML = '<p style="color:lightblue;">Submitting...</p>';
 
         try {
-          const response = await fetch('/add-revision-concepts', {
+          const response = await fetch(`${API}/add-revision-concepts`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(jsonData),
@@ -460,7 +592,7 @@
         statusDiv.innerHTML = '<p style="color:lightblue;">Submitting...</p>';
 
         try {
-          const response = await fetch('/add-mapped-syllabus', {
+          const response = await fetch(`${API}/add-mapped-syllabus`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(jsonData),

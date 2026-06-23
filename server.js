@@ -1,4 +1,6 @@
 const express = require("express");
+const crypto = require("crypto");
+const session = require("express-session");
 const { Pool } = require("pg");
 const { body, validationResult } = require("express-validator");
 require("dotenv").config();
@@ -17,6 +19,43 @@ const pool = new Pool({
 });
 
 app.use(express.json({ limit: "50mb" }));
+
+app.use(
+  session({
+    secret: process.env.SESSION_SECRET || crypto.randomBytes(32).toString("hex"),
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      httpOnly: true,
+      secure: process.env.HTTPS==="false",
+      maxAge: 24 * 60 * 60 * 1000,
+    },
+  })
+);
+
+function requireAuth(req, res, next) {
+  if (req.session && req.session.authenticated) return next();
+  res.status(401).json({ error: "Unauthorized" });
+}
+
+app.post("/login", (req, res) => {
+  const { password } = req.body;
+  if (!password || password !== process.env.ADMIN_PASSWORD) {
+    return res.status(401).json({ error: "Invalid password" });
+  }
+  req.session.authenticated = true;
+  res.json({ success: true });
+});
+
+app.get("/auth-status", (req, res) => {
+  res.json({ authenticated: !!(req.session && req.session.authenticated) });
+});
+
+app.post("/logout", (req, res) => {
+  req.session.destroy();
+  res.json({ success: true });
+});
+
 app.use(express.static(__dirname));
 
 // Serve index.html
@@ -180,6 +219,7 @@ async function insertArticle(client, data) {
 
 app.post(
   "/add-article",
+  requireAuth,
   [body("title").notEmpty(), body("source").notEmpty()],
   async (req, res) => {
     const errors = validationResult(req);
@@ -216,7 +256,7 @@ app.post(
   },
 );
 
-app.post("/add-articles", async (req, res) => {
+app.post("/add-articles", requireAuth, async (req, res) => {
   const articles = req.body.top_upsc_news;
   if (!Array.isArray(articles)) {
     return res
@@ -245,12 +285,13 @@ app.post("/add-articles", async (req, res) => {
   }
 });
 
-app.post("/add-quizzes", async (req, res) => {
-  const quizzes = req.body.quizzes;
+app.post("/add-quizzes", requireAuth, async (req, res) => {
+  // Accept raw array format
+  const quizzes = Array.isArray(req.body) ? req.body : req.body.quizzes;
   if (!Array.isArray(quizzes)) {
     return res
       .status(400)
-      .json({ error: 'Invalid format. "quizzes" should be an array.' });
+      .json({ error: "Invalid format. Expected a JSON array of quiz objects." });
   }
 
   const client = await pool.connect();
@@ -262,13 +303,15 @@ app.post("/add-quizzes", async (req, res) => {
     const warnings = [];
 
     for (const entry of quizzes) {
+      const newsTitle = entry.news_title;
+
       // Resolve article_id by exact title match — pick latest if duplicates exist
       const { rows } = await client.query(
         `SELECT id FROM articles
          WHERE LOWER(TRIM(title)) = LOWER(TRIM($1))
          ORDER BY published_at DESC NULLS LAST, id DESC
          LIMIT 1`,
-        [entry.news_title]
+        [newsTitle]
       );
 
       let matchedRows = rows;
@@ -280,16 +323,16 @@ app.post("/add-quizzes", async (req, res) => {
            WHERE LOWER(title) LIKE LOWER($1)
            ORDER BY published_at DESC NULLS LAST, id DESC
            LIMIT 1`,
-          [`%${entry.news_title.slice(0, 30)}%`]
+          [`%${newsTitle.slice(0, 30)}%`]
         );
         if (partial.length === 0) {
-          const msg = `No article found for quiz: "${entry.news_title.slice(0, 60)}"`;
+          const msg = `No article found for quiz: "${newsTitle.slice(0, 60)}"`;
           warnings.push(msg);
           skipped++;
           continue;
         }
         matchedRows = partial;
-        warnings.push(`Partial match used: "${partial[0].title.slice(0, 60)}" for "${entry.news_title.slice(0, 60)}"`);
+        warnings.push(`Partial match used: "${partial[0].title.slice(0, 60)}" for "${newsTitle.slice(0, 60)}"`);
       }
 
       const article_id = matchedRows[0].id;
@@ -332,12 +375,13 @@ app.post("/add-quizzes", async (req, res) => {
   }
 });
 
-app.post("/add-mapped-syllabus", async (req, res) => {
-  const data = req.body.data;
+app.post("/add-mapped-syllabus", requireAuth, async (req, res) => {
+  // Accept raw array format
+  const data = Array.isArray(req.body) ? req.body : req.body.data;
   if (!Array.isArray(data)) {
     return res
       .status(400)
-      .json({ error: 'Invalid format. "data" should be an array.' });
+      .json({ error: "Invalid format. Expected a JSON array of syllabus objects." });
   }
 
   const client = await pool.connect();
@@ -408,44 +452,81 @@ app.post("/add-mapped-syllabus", async (req, res) => {
   }
 });
 
-app.post("/add-revision-concepts", async (req, res) => {
-  // Accept a single concept object or an array
-  const raw = req.body;
-  const concepts = Array.isArray(raw) ? raw : raw.data ? raw.data : [raw];
+app.post("/add-revision-concepts", requireAuth, async (req, res) => {
+  // Accept raw array format
+  const concepts = Array.isArray(req.body) ? req.body : req.body.data ? req.body.data : [req.body];
 
-  if (!concepts.length || !concepts[0].concept_name) {
-    return res.status(400).json({ error: "Invalid format. Provide a concept object, an array of concepts, or { data: [...] }." });
+  if (!concepts.length || !concepts[0].micro_concept) {
+    return res.status(400).json({ error: "Invalid format. Expected a JSON array of revision concept objects with a 'micro_concept' field." });
   }
 
   const client = await pool.connect();
   try {
     let inserted = 0;
+    let skipped = 0;
+    const warnings = [];
 
     for (const c of concepts) {
+      // Resolve article_id from news_title
+      let article_id = null;
+      if (c.news_title) {
+        const { rows } = await client.query(
+          `SELECT id FROM articles
+           WHERE LOWER(TRIM(title)) = LOWER(TRIM($1))
+           ORDER BY published_at DESC NULLS LAST, id DESC
+           LIMIT 1`,
+          [c.news_title]
+        );
+        if (rows.length > 0) {
+          article_id = rows[0].id;
+        } else {
+          const { rows: partial } = await client.query(
+            `SELECT id FROM articles
+             WHERE LOWER(title) LIKE LOWER($1)
+             ORDER BY published_at DESC NULLS LAST, id DESC
+             LIMIT 1`,
+            [`%${c.news_title.slice(0, 30)}%`]
+          );
+          if (partial.length > 0) {
+            article_id = partial[0].id;
+            warnings.push(`Partial article match used for concept: "${c.micro_concept}"`);
+          } else {
+            warnings.push(`No article found for concept: "${c.micro_concept}" (news: "${c.news_title?.slice(0, 60)}")`);
+          }
+        }
+      }
+
       await client.query(
         `INSERT INTO revision_concepts
-           (concept_name, concept_type, gs_paper, sub_topic, locator,
-            definition, analogy_text, bridge_line, drivers, stats, institutions, qa)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+           (article_id, news_id, news_title, news_source, news_date, news_rank, news_score,
+            micro_concept, is_new, concept_angle, trigger, mechanism, prelims_trap, insight)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
         [
-          c.concept_name,
-          c.concept_type,
-          c.gs_paper,
-          c.sub_topic,
-          c.locator || null,
-          c.section_1?.definition || "",
-          c.section_2?.analogy_text || null,
-          c.section_2?.bridge_line || null,
-          JSON.stringify(c.section_5?.drivers || []),
-          JSON.stringify(c.section_7?.stats || []),
-          JSON.stringify(c.section_8?.institutions || []),
-          JSON.stringify(c.section_9?.qa || []),
+          article_id,
+          c.news_id || null,
+          c.news_title || null,
+          c.news_source || null,
+          c.news_date || null,
+          c.news_rank || null,
+          c.news_score || null,
+          c.micro_concept,
+          c.is_new ?? false,
+          JSON.stringify(c.concept_angle || {}),
+          c.trigger || null,
+          c.mechanism || null,
+          JSON.stringify(c.prelims_trap || {}),
+          c.insight || null,
         ]
       );
       inserted++;
     }
 
-    res.json({ success: true, inserted });
+    res.json({
+      success: true,
+      inserted,
+      skipped,
+      warnings: warnings.length ? warnings : undefined,
+    });
   } catch (err) {
     console.error("Revision concept insert error:", err);
     res.status(500).json({ error: "Insert failed", message: err.message });
