@@ -535,6 +535,97 @@ app.post("/add-revision-concepts", requireAuth, async (req, res) => {
   }
 });
 
+app.post("/add-keyword-glossary", requireAuth, async (req, res) => {
+  // Accept raw array format or { keyword_glossary: [...] }
+  const entries = Array.isArray(req.body)
+    ? req.body
+    : req.body.keyword_glossary;
+
+  if (!Array.isArray(entries)) {
+    return res.status(400).json({
+      error: 'Invalid format. Expected a JSON array or an object with a "keyword_glossary" array.',
+    });
+  }
+
+  const client = await pool.connect();
+  try {
+    // Ensure table exists without dropping existing data
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS keyword_glossary (
+        id          SERIAL PRIMARY KEY,
+        article_id  INTEGER REFERENCES articles(id),
+        news_title  TEXT,
+        term        TEXT NOT NULL,
+        explanation TEXT
+      )
+    `);
+
+    let inserted = 0;
+    let skipped = 0;
+    const warnings = [];
+
+    for (const entry of entries) {
+      const newsTitle = entry.news_title;
+      const keywords = Array.isArray(entry.keywords) ? entry.keywords : [];
+
+      // Resolve article_id by exact title match — pick latest if duplicates exist
+      let article_id = null;
+      if (newsTitle) {
+        const { rows } = await client.query(
+          `SELECT id FROM articles
+           WHERE LOWER(TRIM(title)) = LOWER(TRIM($1))
+           ORDER BY published_at DESC NULLS LAST, id DESC
+           LIMIT 1`,
+          [newsTitle]
+        );
+
+        if (rows.length > 0) {
+          article_id = rows[0].id;
+        } else {
+          const { rows: partial } = await client.query(
+            `SELECT id, title FROM articles
+             WHERE LOWER(title) LIKE LOWER($1)
+             ORDER BY published_at DESC NULLS LAST, id DESC
+             LIMIT 1`,
+            [`%${newsTitle.slice(0, 30)}%`]
+          );
+          if (partial.length > 0) {
+            article_id = partial[0].id;
+            warnings.push(`Partial match used: "${partial[0].title.slice(0, 60)}" for "${newsTitle.slice(0, 60)}"`);
+          } else {
+            warnings.push(`No article found for: "${newsTitle.slice(0, 60)}"`);
+          }
+        }
+      }
+
+      for (const kw of keywords) {
+        if (!kw.term) {
+          skipped++;
+          continue;
+        }
+        await client.query(
+          `INSERT INTO keyword_glossary (article_id, news_title, term, explanation)
+           VALUES ($1, $2, $3, $4)`,
+          [article_id, newsTitle || null, kw.term, kw.explanation || null]
+        );
+        inserted++;
+      }
+    }
+
+    res.json({
+      success: true,
+      inserted,
+      skipped,
+      warnings: warnings.length ? warnings : undefined,
+    });
+  } catch (err) {
+    console.error("Keyword glossary insert error:", err);
+    res.status(500).json({ error: "Insert failed", message: err.message });
+  } finally {
+    client.release();
+  }
+});
+
 // Catch-all error handler — ensures Express 5 never returns an HTML error page
 app.use((err, req, res, next) => {
   console.error(err);

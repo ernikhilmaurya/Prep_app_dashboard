@@ -244,6 +244,7 @@
         <button class="tab-btn" onclick="switchTab('quiz')">Upload Quiz</button>
         <button class="tab-btn" onclick="switchTab('syllabus')">Upload Mapped Syllabus</button>
         <button class="tab-btn" onclick="switchTab('revision')">Upload Revision Concepts</button>
+        <button class="tab-btn" onclick="switchTab('glossary')">Upload Keyword Glossary</button>
       </div>
 
       <!-- Article Panel -->
@@ -294,6 +295,18 @@
         <div id="syllabusStatus"></div>
       </div>
 
+      <!-- Keyword Glossary Panel -->
+      <div id="panel-glossary" class="panel">
+        <h2>Upload JSON File</h2>
+        <input type="file" id="glossaryFileInput" accept=".json" />
+
+        <h2>Or Paste JSON</h2>
+        <textarea id="glossaryJsonInput" placeholder='{"keyword_glossary": [{"news_title": "...", "keywords": [{"term": "...", "explanation": "..."}]}]}'></textarea>
+
+        <button class="submit-btn" onclick="submitGlossary()">Submit</button>
+        <div id="glossaryStatus"></div>
+      </div>
+
     </div>
 
     <script>
@@ -342,7 +355,7 @@
         document.getElementById('loginError').textContent = '';
       }
 
-      const TABS = ['article', 'quiz', 'syllabus', 'revision'];
+      const TABS = ['article', 'quiz', 'syllabus', 'revision', 'glossary'];
 
       function switchTab(tab) {
         document.querySelectorAll('.tab-btn').forEach((btn, i) => {
@@ -615,6 +628,73 @@
             document.getElementById("syllabusFileInput").value = "";
           } else {
             statusDiv.innerHTML = `<p style="color:red;">Submission failed: ${data.error || "Unknown error"}</p>`;
+          }
+        } catch (error) {
+          console.error("Error:", error);
+          statusDiv.innerHTML = `<p style="color:red;">An error occurred: ${error.message || "Check console for details."}</p>`;
+        }
+      }
+      // ── Keyword Glossary upload ────────────────────────────────────────────
+
+      function submitGlossary() {
+        const jsonInput = document.getElementById("glossaryJsonInput");
+        const fileInput = document.getElementById("glossaryFileInput");
+        const statusDiv = document.getElementById("glossaryStatus");
+        statusDiv.innerHTML = "";
+
+        if (jsonInput.value) {
+          try {
+            const jsonData = JSON.parse(jsonInput.value);
+            sendGlossaryData(jsonData);
+          } catch (e) {
+            statusDiv.innerHTML = `<p style="color:red;">Error parsing JSON: ${e.message}</p>`;
+            return;
+          }
+        } else if (fileInput.files.length > 0) {
+          const reader = new FileReader();
+          reader.onload = function (event) {
+            try {
+              const jsonData = JSON.parse(event.target.result);
+              sendGlossaryData(jsonData);
+            } catch (e) {
+              statusDiv.innerHTML = `<p style="color:red;">Error parsing JSON from file: ${e.message}</p>`;
+              return;
+            }
+          };
+          reader.readAsText(fileInput.files[0]);
+        } else {
+          statusDiv.innerHTML = '<p style="color:orange;">Please paste JSON or select a file.</p>';
+        }
+      }
+
+      async function sendGlossaryData(jsonData) {
+        const statusDiv = document.getElementById("glossaryStatus");
+        statusDiv.innerHTML = '<p style="color:lightblue;">Submitting...</p>';
+
+        try {
+          const response = await fetch(`${API}/add-keyword-glossary`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(jsonData),
+          });
+          const text = await response.text();
+          let data;
+          try { data = JSON.parse(text); } catch {
+            statusDiv.innerHTML = `<p style="color:red;">Server error (${response.status}): ${text.slice(0, 300)}</p>`;
+            return;
+          }
+          if (data.success) {
+            let msg = `<p style="color:lightgreen;">Successfully inserted ${data.inserted} keyword${data.inserted !== 1 ? 's' : ''}`;
+            if (data.skipped) msg += ` (${data.skipped} entries skipped)`;
+            msg += `.</p>`;
+            if (data.warnings && data.warnings.length) {
+              msg += `<pre style="color:#f0ad4e;">${data.warnings.join('\n')}</pre>`;
+            }
+            statusDiv.innerHTML = msg;
+            document.getElementById("glossaryJsonInput").value = "";
+            document.getElementById("glossaryFileInput").value = "";
+          } else {
+            statusDiv.innerHTML = `<p style="color:red;">Submission failed: ${data.error || "Unknown error"}${data.message ? ' — ' + data.message : ''}</p>`;
           }
         } catch (error) {
           console.error("Error:", error);
