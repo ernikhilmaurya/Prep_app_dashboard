@@ -565,7 +565,7 @@ app.post("/add-keyword-glossary", requireAuth, async (req, res) => {
     const warnings = [];
 
     for (const entry of entries) {
-      const newsTitle = entry.news_title;
+      const newsTitle = entry.title;
       const keywords = Array.isArray(entry.keywords) ? entry.keywords : [];
 
       // Resolve article_id by exact title match — pick latest if duplicates exist
