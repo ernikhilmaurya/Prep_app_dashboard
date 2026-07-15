@@ -296,8 +296,12 @@ app.post("/add-quizzes", requireAuth, async (req, res) => {
 
   const client = await pool.connect();
   try {
-    await client.query("TRUNCATE TABLE quizzes RESTART IDENTITY");
-
+    // NOTE: this used to TRUNCATE the entire quizzes table on every upload,
+    // which wiped every past article's quizzes each time a new day's batch
+    // was submitted — only the most recently uploaded day ever had quiz data.
+    // Fixed to scope the replace to just the articles in this batch (below),
+    // so re-uploading a correction for one day no longer destroys every
+    // other day's quizzes.
     let totalRows = 0;
     let skipped = 0;
     const warnings = [];
@@ -337,6 +341,10 @@ app.post("/add-quizzes", requireAuth, async (req, res) => {
 
       const article_id = matchedRows[0].id;
       const difficulties = ["easy", "medium", "hard"];
+
+      // Replace only this article's own quiz rows — re-submitting a
+      // correction for one article must not touch any other article's data.
+      await client.query(`DELETE FROM quizzes WHERE article_id = $1`, [article_id]);
 
       for (const difficulty of difficulties) {
         const questions = entry.quiz[difficulty] || [];
@@ -427,6 +435,10 @@ app.post("/add-mapped-syllabus", requireAuth, async (req, res) => {
       }
 
       for (const id of articleIds) {
+        // Replace this article's own mapping rows — re-submitting a
+        // correction must not accumulate duplicates on top of the old set.
+        await client.query(`DELETE FROM mapped_syllabus WHERE article_id = $1`, [id]);
+
         for (const entry of article.sub_topics) {
           await client.query(
             `INSERT INTO mapped_syllabus (article_id, rank, title, sub_topic, micro_topics)
@@ -466,8 +478,14 @@ app.post("/add-revision-concepts", requireAuth, async (req, res) => {
     let skipped = 0;
     const warnings = [];
 
+    // Pass 1: resolve article_id for every concept first. Several concepts
+    // in the same batch commonly share one article_id (multiple micro
+    // concepts per news item) — resolving up front lets us replace each
+    // article's old rows exactly once, instead of a naive per-row delete
+    // that would wipe out an earlier concept from this same batch.
+    const resolved = [];
+    const articleIdsInBatch = new Set();
     for (const c of concepts) {
-      // Resolve article_id from news_title
       let article_id = null;
       if (c.news_title) {
         const { rows } = await client.query(
@@ -495,7 +513,18 @@ app.post("/add-revision-concepts", requireAuth, async (req, res) => {
           }
         }
       }
+      if (article_id) articleIdsInBatch.add(article_id);
+      resolved.push({ c, article_id });
+    }
 
+    // Pass 2: replace each affected article's rows once, then insert.
+    if (articleIdsInBatch.size > 0) {
+      await client.query(`DELETE FROM revision_concepts WHERE article_id = ANY($1::int[])`, [
+        [...articleIdsInBatch],
+      ]);
+    }
+
+    for (const { c, article_id } of resolved) {
       await client.query(
         `INSERT INTO revision_concepts
            (article_id, news_id, news_title, news_source, news_date, news_rank, news_score,
@@ -596,6 +625,14 @@ app.post("/add-keyword-glossary", requireAuth, async (req, res) => {
             warnings.push(`No article found for: "${newsTitle.slice(0, 60)}"`);
           }
         }
+      }
+
+      // Replace this article's own glossary rows — re-submitting a
+      // correction must not accumulate duplicates on top of the old set.
+      // (article_id can be null when no article matched — nothing to key
+      // a replace on in that case, so just insert as before.)
+      if (article_id) {
+        await client.query(`DELETE FROM keyword_glossary WHERE article_id = $1`, [article_id]);
       }
 
       for (const kw of keywords) {
