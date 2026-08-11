@@ -8,6 +8,11 @@ require("dotenv").config();
 const app = express();
 const port = process.env.PORT || 4000;
 
+// Behind nginx (TLS terminates there, proxies to this app over plain HTTP).
+// Without this, express-session sees req.secure === false and silently
+// drops the Set-Cookie header whenever cookie.secure is true.
+app.set("trust proxy", 1);
+
 // PostgreSQL connection pool
 const pool = new Pool({
   user: process.env.DB_USER,
@@ -25,6 +30,7 @@ app.use(
     secret: process.env.SESSION_SECRET || crypto.randomBytes(32).toString("hex"),
     resave: false,
     saveUninitialized: false,
+    proxy: true,
     cookie: {
       httpOnly: true,
       secure: process.env.HTTPS==="true",
