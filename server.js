@@ -85,13 +85,13 @@ async function insertArticle(client, data) {
       read_time, gs_papers, source, published_at, image_url,
       news_summary, why_it_matters, real_life_example,
       syllabus_topics, related_micro_topics,
-      relevance_score, relevance_reason
+      relevance_score, relevance_reason, type
     )
     VALUES (
       $1,$2,$3,$4,$5,
       $6,$7,$8,$9,$10,
       $11,$12,$13,
-      $14,$15,$16,$17
+      $14,$15,$16,$17,$18
     )
     RETURNING id
     `;
@@ -114,6 +114,7 @@ async function insertArticle(client, data) {
     analysis.related_micro_topics || [],
     data.score || 0,
     data.reason || "",
+    data.type?.trim().toLowerCase() === "editorial" ? "editorial" : "article",
   ];
 
   const result = await client.query(articleQuery, values);
