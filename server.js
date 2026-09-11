@@ -76,6 +76,25 @@ function calculateReadTime(text) {
   return Math.ceil(words / wordsPerMinute);
 }
 
+// The app's content day is IST (see backend/src/utils/dates.js). Passing a
+// JS Date straight to `pg` serializes it using the server process's local
+// OS timezone, which the "timestamp without time zone" published_at column
+// then stores as literal wall-clock digits (Postgres silently discards any
+// offset for that column type). On a UTC-timezoned server that shifts the
+// calendar day back by one for anything uploaded between 12:00am-5:29am IST.
+// Building the literal IST wall-clock string here sidesteps that entirely —
+// it's correct regardless of the server's own OS timezone.
+function istTimestamp() {
+  const IST_OFFSET_MS = 330 * 60 * 1000; // UTC+5:30
+  const d = new Date(Date.now() + IST_OFFSET_MS);
+  const pad = (n, len = 2) => String(n).padStart(len, "0");
+  return (
+    `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ` +
+    `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}.` +
+    pad(d.getUTCMilliseconds(), 3)
+  );
+}
+
 async function insertArticle(client, data) {
   const analysis = data.analysis || {};
 
@@ -105,7 +124,7 @@ async function insertArticle(client, data) {
     calculateReadTime(analysis.original_news_summary),
     analysis.gs_paper ? analysis.gs_paper.split(",").map((s) => s.trim()) : [],
     data.source,
-    new Date(),
+    istTimestamp(),
     null,
     analysis.original_news_summary,
     analysis.why_this_matters_for_india,
